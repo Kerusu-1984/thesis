@@ -15,6 +15,7 @@
 \usepackage{ulem}
 \usepackage{times} % use Times font instead of default one
 \usepackage{url}
+\usepackage{seqsplit}
 
 \setcounter{tocdepth}{3}
 \setcounter{page}{-1}
@@ -93,30 +94,36 @@ FUSEやシステムコールインターセプションライブラリなどの�
 
 \section{ファイルシステム}
 
+\begin{figure}[h]
+	\begin{minipage}[b]{1\columnwidth}
+		\centering
+		\includegraphics[width=0.9\linewidth]{./figure/filesystem.pdf}
+		\caption{ファイルシステム概念図}
+		\label{fig:Filesystem}
+	\end{minipage}
+\end{figure}
+
 \section{ユーザ空間ファイルシステム}
 
 \section{並列ファイルシステム}
 
-\chapter{システムコールフックライブラリの設計}
 
-\section{zpoline}
-
-\section{CHFS}
 
 \chapter{既存手法}
-アプリケーションの書き換えなしでユーザ空間ファイルシステムを利用する方法は大きく分けて2つある.
+アプリケーションの書き換えなしにユーザ空間ファイルシステムを利用する方法は大きく分けて2つある.
 \section{FUSE}
-FUSE(Filesystem in Userspace)はユーザ空間ファイルシステムを開発するときに最もメジャーなフレームワークである. FUSEを利用することで
-容易にユーザ空間ファイルシステムをPOSIXインターフェースに対応させることができるため, SSHFS\cite{hoskins2006sshfs}, GlusterFS\cite{davies2013scale}, 
-ZFS\cite{rodeh2003zfs}など数多くのFUSEベースのファイルシステムが開発されている.
+FUSE(Filesystem in Userspace)はユーザ空間ファイルシステムを開発するときに最も使用されているフレームワークである. FUSEを利用することで
+容易にユーザ空間ファイルシステムをPOSIXインターフェースに対応させることができるため, SSHFS~\cite{hoskins2006sshfs}, GlusterFS~\cite{davies2013scale}, 
+ZFS~\cite{rodeh2003zfs}など数多くのFUSEベースのファイルシステムが開発されている.
 
 しかしながら,アプリケーションとFUSEプロセスとの通信コストや,コンテキストスイッチによるオーバーヘッドが原因の性能低下により, 
-特にパフォーマンスが求められる高性能計算分野での利用は適していないと論じられている\cite{brinkmann2020ad}. 
+特にパフォーマンスが求められる高性能計算分野での利用は適していないと論じられている~\cite{brinkmann2020ad}. そのためFUSEから派生した
+より効率的なユーザ空間ファイルシステムフレームワークの研究も多くされている~\cite{294791, zhu2018direct}. 
 
 アプリケーションがFUSEを介してユーザ空間ファイルシステムにアクセスする過程を\figurename~\ref{fig:FUSE}に示す. アプリケーションが
-標準ライブラリを通じてシステムコールを発行し, VFSに到達するまでは通常のファイルシステムアクセスと同じである. 
+標準ライブラリを通じてシステムコールを発行し, VFSに到達するまでは通常のファイルシステムアクセスと同じである. VFSにはFUSEドライバが
+登録されており, このドライバとユーザ空間ファイルシステムが/dev/fuseブロックデバイスを介してやり取りをする.
 
-TODO: FUSEの説明追加
 
 \newpage
 
@@ -134,21 +141,61 @@ TODO: FUSEの説明追加
 
 
 \section{プリロードライブラリ}
-libsysio
-syscall\_intercept
-gotcha
+Linuxには共有ライブラリの関数をフックできるLD\_PRELOAD環境変数が存在する. \seqsplit{LD\_PRELOAD}に共有ライブラリのパスを
+指定すると, プログラム起動時に動的リンカが対象ライブラリを優先的にリンクする. これによりある関数がLD\_PRELOADに指定したライブラリに
+存在する場合, 他のライブラリの実装より優先して呼び出されるため, 既存関数の実装差し替えや, main関数実行前に任意の関数を実行することが
+可能になる. 各ユーザ空間ファイルシステムが提供するプリロードライブラリをLD\_PRELOADで指定してアプリケーションを実行することで, 
+ソースコードの変更や再コンパイルなしにユーザ空間ファイルシステムを利用することが可能になる. しかしアプリケーションが呼び出すI/O関数
+を網羅的にフックすることは容易ではないため, プリロードライブラリの作成には次に示すライブラリが使用されることが多い. 
+
+Gotcha~\cite{gotcha}は任意の関数をラップするライブラリで, LD\_PRELOADに似ているが, プログラム可能なAPIを介して動作する. 
+UnifyFS~\cite{10177390}はGotchaを利用してlibc(C標準ライブラリ)のI/O関連の関数をフックし, UnifyFS固有のAPIに置き換えることで
+POSIXインターフェースの対応を行っている.
+
+syscall\_intercept~\cite{syscall-intercept}は, メモリにロードされたglibcのテキストセグメント中のsyscall命令を検知し, jmp命令に
+置き換えることで任意の関数呼び出しを可能にするライブラリである.
+syscall\_interceptを使用してPOSIXインターフェース対応をしているユーザ空間ファイルシステムにはGekkoFS~\cite{8514892}がある.
+glibcの関数をフックする場合と比較して、少数のシステムコールフックを定義するだけで済むため、ファイルシステムが提供する
+プリロードライブラリの実装は相対的に容易である. しかしsyscall\_interceptはLinuxのglibcにしか対応していないため, glibcを使わない
+アプリケーションは動かない可能性がある.
+
+\chapter{システムコールフックライブラリの設計}
+
+\begin{figure}[h]
+	\begin{minipage}[b]{1\columnwidth}
+		\centering
+		\includegraphics[width=0.9\linewidth]{./figure/syscall_hook.pdf}
+		\caption{システムコールフックによるファイルシステムアクセス}
+		\label{fig:Syscall hook}
+	\end{minipage}
+\end{figure}
+
+\section{zpoline}
+
+\begin{figure}[h]
+	\begin{minipage}[b]{1\columnwidth}
+		\centering
+		\includegraphics[width=0.9\linewidth]{./figure/zpoline_mechanism.pdf}
+		\caption{zpoline メカニズム}
+		\label{fig:Zpoline mechanism}
+	\end{minipage}
+\end{figure}
+
+\section{CHFS}
 
 \chapter{評価実験}
 前章で実装したシステムコールライブラリの評価実験を行う。本実験の目的としては、ユーザ空間ファイルシステムが提供する
 クライアントライブラリを使用した場合と比べてどの程度ストレージアクセス性能が保たれるか評価すること、また既存手法の中で
 最もよく用いられるFUSEとの性能を比較することである。
 
+\section{予備実験: FUSE性能評価}
+TODO: 余裕があればやる
 \section{実験環境}
 実験環境として筑波大学計算科学研究センターが運用するPegasusスーパーコンピュータを利用する。Pegasusは各計算ノードに専用のストレージを
 保持しており、SSDとPMEMを利用できる。本実験ではPMEMをdevdaxモードで利用する。計算ノード間はInfiniBand NDR 200で接続されており、
 帯域幅は200Gbpsである。
 \section{実験方法}
-本実験ではIORベンチマーク\cite{ior}を実行してCHFSファイルシステムに対するファイル読み込み/書き込み帯域幅を測定する。提案手法を含む
+本実験ではIORベンチマーク~\cite{ior}を実行してCHFSファイルシステムに対するファイル読み込み/書き込み帯域幅を測定する。提案手法を含む
 以下の3種類の条件下でベンチマークを実行し、その性能を比較する。
 
 \subsection{ネイティブAPI}

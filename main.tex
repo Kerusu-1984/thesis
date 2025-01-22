@@ -89,64 +89,121 @@ FUSEやシステムコールインターセプションライブラリなどの�
 教員に聞くとよい。この文書は主にスタイルの作成方法と、論文の体裁を示すの
 みであり、どうやったらよい論文になるかの示唆は含まれていない。
 
-\chapter{形式}
+\chapter{背景}
 
-ここでは、論文の表紙および本体の記述方法について述べる。
+\section{ファイルシステム}
 
-\section{表紙}
+\section{ユーザ空間ファイルシステム}
 
-表紙は、以下の各項目に相当する文字列を記述した上で、\texttt{$\backslash$maketitle}により作成する。
+\section{並列ファイルシステム}
 
-\begin{description} \parskip=1pt
-\item{題目: }
-題目は\texttt{$\backslash$title}に記述する。行替えを行う場合には $\backslash \backslash$ を入力する。
-ただし、題目の最後に$\backslash \backslash$ を入力するとコンパイルが通らなくなるので注意する。
-なお、題目が複数行に渡るなどの理由により表紙ページがあふれた場合にはスタイルファイルを変更する必要がある。
-\item{著者名: }
-著者名は\texttt{$\backslash$author}に記述する。
-\item{指導教員名: }
-指導教員名は\texttt{$\backslash$advisor}に記述する。
-2名以上の場合には複数名を記述する。
-\item{主専攻名: }
-主専攻名は\texttt{$\backslash$majorfield}に記述する。「○○主専攻」という形式にすること。
-\item{年度: }
-年度は\texttt{$\backslash$fiscalyear} に記述する。年度は提出時のものを記述すること。
-\end{description}
+\chapter{システムコールフックライブラリの設計}
 
-\section{本体}
+\section{zpoline}
 
-本体は1段組で記述する。
+\section{CHFS}
 
-図表には番号と説明（caption）を付け、文章中で参照する。
-表~\ref{table:scores}は
-表の例である。表の説明は表の上に、図の説明は図の下に書くことが多い。
-図の挿入に用いる \LaTeX のパッケージについては使用環境に合わせて自由に選択してほしい。
+\chapter{既存手法}
+アプリケーションの書き換えなしでユーザ空間ファイルシステムを利用する方法は大きく分けて2つある.
+\section{FUSE}
+FUSE(Filesystem in Userspace)はユーザ空間ファイルシステムを開発するときに最もメジャーなフレームワークである. FUSEを利用することで
+容易にユーザ空間ファイルシステムをPOSIXインターフェースに対応させることができるため, SSHFS\cite{hoskins2006sshfs}, GlusterFS\cite{davies2013scale}, 
+ZFS\cite{rodeh2003zfs}など数多くのFUSEベースのファイルシステムが開発されている.
 
-\begin{table}[hbt]
-\caption{表の例}
-\label{table:scores}
-\begin{center}
-\begin{tabular}{|c|r|r|r|r|}
-\hline
-年度 & 1年次 & 2年次 & 3年次 & 4年次 \\
-\hline
-2016 & 85 & 92 & 86 &  88 \\
-2017 & 83 & 89 & 90 & 102 \\
-2018 & 88 & 87 & 91 & 112 \\
-\hline 
-\end{tabular}
-\end{center}
-\end{table}
-\medskip
+しかしながら,アプリケーションとFUSEプロセスとの通信コストや,コンテキストスイッチによるオーバーヘッドが原因の性能低下により, 
+特にパフォーマンスが求められる高性能計算分野での利用は適していないと論じられている\cite{brinkmann2020ad}. 
 
-また、参考文献、図、表の入れ方を含む、文章のスタイルについては、
-ACM, IEEE, 情報処理学会, 電子情報通信学会などの学会が出版している
-ジャーナルや国際会議の論文のスタイルを参考にするとよい。
+アプリケーションがFUSEを介してユーザ空間ファイルシステムにアクセスする過程を\figurename~\ref{fig:FUSE}に示す. アプリケーションが
+標準ライブラリを通じてシステムコールを発行し, VFSに到達するまでは通常のファイルシステムアクセスと同じである. 
+
+TODO: FUSEの説明追加
+
+\newpage
+
+
+\begin{figure}[h]
+	\begin{minipage}[b]{1\columnwidth}
+		\centering
+		\includegraphics[width=0.9\linewidth]{./figure/FUSE.pdf}
+		\caption{FUSE アーキテクチャ}
+		\label{fig:FUSE}
+	\end{minipage}
+\end{figure}
+
+\newpage
+
+
+\section{プリロードライブラリ}
+libsysio
+syscall\_intercept
+gotcha
+
+\chapter{評価実験}
+前章で実装したシステムコールライブラリの評価実験を行う。本実験の目的としては、ユーザ空間ファイルシステムが提供する
+クライアントライブラリを使用した場合と比べてどの程度ストレージアクセス性能が保たれるか評価すること、また既存手法の中で
+最もよく用いられるFUSEとの性能を比較することである。
+
+\section{実験環境}
+実験環境として筑波大学計算科学研究センターが運用するPegasusスーパーコンピュータを利用する。Pegasusは各計算ノードに専用のストレージを
+保持しており、SSDとPMEMを利用できる。本実験ではPMEMをdevdaxモードで利用する。計算ノード間はInfiniBand NDR 200で接続されており、
+帯域幅は200Gbpsである。
+\section{実験方法}
+本実験ではIORベンチマーク\cite{ior}を実行してCHFSファイルシステムに対するファイル読み込み/書き込み帯域幅を測定する。提案手法を含む
+以下の3種類の条件下でベンチマークを実行し、その性能を比較する。
+
+\subsection{ネイティブAPI}
+ファイルシステムが提供するクライアントライブラリのAPIを利用してファイルにアクセスする。具体的にはIORベンチマークのソースコードを変更し、
+CHFSクライアントライブラリの関数を呼び出すことでCHFS上のファイルへの読み書きを行う。
+\subsection{FUSE}
+CHFSサーバを起動した後、chfuseコマンドを使用して指定のディレクトリにマウントする。IORベンチマークのファイル読み込み・書き込みは
+マウントしたディレクトリに対して実行する。
+\subsection{システムコールフック(提案手法)}
+前章で実装したシステムコールフックライブラリを利用する。仮想的なマウントディレクトリ/chfsに対してIORベンチマークのファイル読み込み・
+書き込みを行う。
+\section{実験設定}
+Pegasusシステムにおいて、計算ノード10台をCHFSサーバとして割り当て、さらに1台をIORベンチマークの実行に使用し、合計で11台の計算ノードを
+専有する。
+
+CHFSはチャンクサイズを16MiBに設定し、各ノード46プロセスでCHFSサーバを起動する。通信プロトコルにverbs、バックエンドにpmemkvを利用する。
+
+IORはプロセス数を1、2、4、…と16まで増やしながら実行する。IORではfile-per-process方式でアクセスし、各プロセスが別々のファイルに
+対して1TiB読み書きする。この操作を5回行い、帯域幅の平均を求める。
+\section{結果}
+
+実験結果を\figurename~\ref{fig:Evaluation read}と\figurename~\ref{fig:Evaluation write}に示す。どの条件でもプロセス数を増やすに
+つれ帯域幅が増加していることがわかる。読み込みの16プロセスにおいて性能の増加がないのは、Pegasus計算ノード間の通信帯域幅200Gbpsに
+到達していると考えられる。
+
+基準であるネイティブAPIを使用した場合の性能に対して、提案手法のシステムコールフックは読み込み・書き込みともに同程度の性能を示した。
+またFUSEを使用した場合と比較して提案手法は5.3倍から6.4倍高い性能を示した。
+
+\newpage
+
+\begin{figure}[h]
+	\begin{minipage}[b]{1\columnwidth}
+		\centering
+		\includegraphics[width=0.9\linewidth]{./figure/ior_benchmark_read.pdf}
+		\caption{IOR 読込み性能}
+		\label{fig:Evaluation read}
+	\end{minipage}
+\end{figure}
+
+\begin{figure}[h]
+    \begin{minipage}[b]{1\columnwidth}
+		\centering
+		\includegraphics[width=0.9\linewidth]{./figure/ior_benchmark_write.pdf}
+		\caption{IOR 書込み性能}
+		\label{fig:Evaluation write}
+	\end{minipage}
+\end{figure}
+
+\chapter{終論}
 
 \chapter*{謝辞}
 \addcontentsline{toc}{chapter}{\numberline{}謝辞}
 1年間親身かつ丁寧に研究を指導してくださった筑波大学計算科学研究センターの建部修見教授に深く感謝申し上げます。
-加えて、研究テーマの相談段階から論文作成にいたるまで研究にご指導ご尽力いただき、また国際会議の発表において共著者としてご協力いただいたHPCS研究室の小山創平氏に大変感謝申し上げます。
+加えて、研究テーマの相談段階から論文作成にいたるまで研究にご指導ご尽力いただき、また国際会議の発表において共著者として
+ご協力いただいたHPCS研究室の小山創平氏に大変感謝申し上げます。
 また、計算科学研究センターの研究員である平賀弘平氏、HPCS研究室の杉原航平氏にも研究を進めるうえで多大なアドバイスをいただきました。感謝申し上げます。
 同時に、計算科学研究センターの職員の皆様、特に同センター秘書の桑野洋子氏には事務的な面で研究をサポートしていただきありがとうございました。
 HPCS研究室の皆様には、研究を進めるにあたり議論を通じてご協力いただきました。
@@ -158,12 +215,6 @@ HPCS研究室の皆様には、研究を進めるにあたり議論を通じて�
 \addcontentsline{toc}{chapter}{\numberline{}参考文献}
 \renewcommand{\bibname}{参考文献}
 
-%% 参考文献に jbibtex を使う場合
-%\bibliographystyle{junsrt}
-%\bibliography{samplebib}
-%% [compile] jbibtex sample; platex sample; platex sample;
-
-%% 参考文献を直接ファイルに含めて書く場合
 \bibliography{main}
 \bibliographystyle{junsrt}
 

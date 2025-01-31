@@ -197,3 +197,34 @@ numpages = {25},
 location = {Vancouver, BC, Canada},
 series = {NIPS '20}
 }
+
+@article{3149376,
+author = {Vef, Marc-Andr\'{e} and Tarasov, Vasily and Hildebrand, Dean and Brinkmann, Andr\'{e}},
+title = {Challenges and Solutions for Tracing Storage Systems: A Case Study with Spectrum Scale},
+year = {2018},
+issue_date = {May 2018},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {14},
+number = {2},
+issn = {1553-3077},
+url = {https://doi.org/10.1145/3149376},
+doi = {10.1145/3149376},
+abstract = {IBM Spectrum Scale’s parallel file system General Parallel File System (GPFS) has a 20-year development history with over 100 contributing developers. Its ability to support strict POSIX semantics across more than 10K clients leads to a complex design with intricate interactions between the cluster nodes. Tracing has proven to be a vital tool to understand the behavior and the anomalies of such a complex software product. However, the necessary trace information is often buried in hundreds of gigabytes of by-product trace records. Further, the overhead of tracing can significantly impact running applications and file system performance, limiting the use of tracing in a production system.In this research article, we discuss the evolution of the mature and highly scalable GPFS tracing tool and present the exploratory study of GPFS’ new tracing interface, FlexTrace, which allows developers and users to accurately specify what to trace for the problem they are trying to solve. We evaluate our methodology and prototype, demonstrating that the proposed approach has negligible overhead, even under intensive I/O workloads and with low-latency storage devices.},
+journal = {ACM Trans. Storage},
+month = apr,
+articleno = {18},
+numpages = {24},
+keywords = {GPFS, Parallel file system, performance, trace analysis}
+}
+
+@inproceedings {270722,
+author = {Frank Schmuck and Roger Haskin},
+title = {{GPFS}: A {Shared-Disk} File System for Large Computing Clusters},
+booktitle = {Conference on File and Storage Technologies (FAST 02)},
+year = {2002},
+address = {Monterey, CA},
+url = {https://www.usenix.org/conference/fast-02/gpfs-shared-disk-file-system-large-computing-clusters},
+publisher = {USENIX Association},
+month = jan
+}

@@ -5,7 +5,7 @@
 % 
 % OSやLaTeXの設定によっては漢字コードや改行コードを変更する必要があります. 
 %%
-\documentclass[a4paper，11pt]{jreport}
+\documentclass[a4paper,11pt]{jreport}
 
 %%【PDF，PostScript，JPEG，PNG等の画像の貼り込み】
 %% dvipdfmx を使う場合
@@ -16,6 +16,29 @@
 \usepackage{times} % use Times font instead of default one
 \usepackage{url}
 \usepackage{seqsplit}
+\usepackage{listings,jvlisting}
+
+\lstset{
+  basicstyle={\ttfamily},
+  identifierstyle={\small},
+  commentstyle={\smallitshape},
+  keywordstyle={\small\bfseries},
+  ndkeywordstyle={\small},
+  stringstyle={\small\ttfamily},
+  frame={tb},
+  breaklines=true,
+  columns=[l]{fullflexible},
+  numbers=left,
+  xrightmargin=0zw,
+  xleftmargin=3zw,
+  numberstyle={\scriptsize},
+  stepnumber=1,
+  numbersep=1zw,
+  lineskip=-0.5ex
+}
+
+\renewcommand{\lstlistingname}{コード}
+\renewcommand{\lstlistlistingname}{コード目次}
 
 \setcounter{tocdepth}{3}
 \setcounter{page}{-1}
@@ -78,6 +101,7 @@
 \tableofcontents
 \listoffigures
 %\listoftables
+\lstlistoflistings
 
 \pagebreak \setcounter{page}{1}
 \pagenumbering{arabic} % 1，2，3
@@ -119,7 +143,7 @@
 \section{ファイルシステム}
 ファイルシステムは，アプリケーションがデータにアクセスするための共通のインタフェースである．
 
-アプリケーションがファイルシステムを利用するときの流れを，\figurename~\ref{fig:Filesystem}を用いて説明する．
+アプリケーションがファイルシステムを利用するときの一般的な流れを，\figurename~\ref{fig:Filesystem}を用いて説明する．
 アプリケーションがファイルを開くとき，Linux標準ライブラリ(libc)のopen関数を実行する．open関数はopenシステムコールのラッパー関数であり，
 実行するといくつかの前処理を行った後にopenシステムコールを呼び出す．
 ここでシステムコールはアプリケーションがカーネル空間のリソース(メモリ，ストレージ)にアクセスするための手段で，呼び出されると割り込み
@@ -127,10 +151,13 @@
 ファイルやディレクトリに対する基本的な操作を行うことができる．VFSによって適切なファイルシステムドライバにファイルオープン要求が送られ，
 実際のストレージへのアクセスが行われる．
 
+I/O操作を行うときは標準ライブラリの関数を通常呼ぶが，インラインアセンブラを利用してシステムコールを直接発行することでファイルシステムに
+アクセスすることもできる．例えばGo言語はlibcを利用せずアセンブリコードとしてシステムコールの呼び出しを実装している．
+
 \begin{figure}[h]
 	\begin{minipage}[b]{1\columnwidth}
 		\centering
-		\includegraphics[width=0.9\linewidth]{./figure/filesystem.pdf}
+		\includegraphics[width=0.9\linewidth]{./figure/filesystem_v2.pdf}
 		\caption{ファイルシステム概念図}
 		\label{fig:Filesystem}
 	\end{minipage}
@@ -172,7 +199,7 @@ HPCアプリケーションは計算の高速化のため並列化を行うこ�
 POSIX（Portable Operating System Interface）はUNIX系OS間でアプリケーションの移植性を高めるために定義されたIEEEの標準規格である．POSIXに準拠して開発されたアプリケーションは，POSIX準拠のOSならばどれでも同じように動作させることができる．
 \chapter{既存手法}
 前章で説明したように，アプリケーションがファイルに何らかの操作を実行するときには必ずシステムコールを呼び出し，制御がカーネル空間に
-移りVFSを経由してファイルシステムにアクセスする．カーネル空間ファイルシステムと違い，ユーザ空間ファイルシステムはOSに登録
+移った後VFSを経由してファイルシステムにアクセスする．カーネル空間ファイルシステムと違い，ユーザ空間ファイルシステムはOSに登録
 することが簡単にはできないため，アプリケーションの書き換えなしにはユーザ空間ファイルシステムを利用できない．この問題の
 既存の解決方法として，FUSEとプリロードライブラリが挙げられる．
 \section{FUSE}
@@ -214,15 +241,23 @@ Linuxには共有ライブラリの関数をフックできるLD\_PRELOAD環境�
 
 Gotcha~\cite{gotcha}は任意の関数をラップするライブラリで，LD\_PRELOADに似ているが，プログラム可能なAPIを介して動作する．
 UnifyFS~\cite{10177390}はGotchaを利用してlibc(C標準ライブラリ)のI/O関連の関数をフックし，UnifyFSのAPIに置き換えることで
-POSIXインタフェースの対応を行っている．
+POSIXインタフェースの対応を行っている．しかしアプリケーションがlibcを経由せず直接システムコールを呼び出す場合，例えばインライン
+アセンブラを利用して呼び出されたシステムコールに対応できない．
 
 syscall\_intercept~\cite{syscall-intercept}は，メモリにロードされたglibcのテキストセグメント中のsyscall命令を検知し，jmp命令に
 置き換えることで任意の関数呼び出しを可能にするライブラリである．syscall\_interceptを使用してPOSIXインタフェース対応をしているユーザ空間ファイルシステムにはGekkoFS~\cite{8514892}がある．glibcの関数をフックする場合と比較して，少数のシステムコールフックを定義するだけで済むため，ファイルシステムが提供する
-プリロードライブラリの実装は相対的に容易である．しかしsyscall\_interceptはLinuxのglibcにしか対応していないため，glibcを使わない
-アプリケーションは動かない可能性がある．
+プリロードライブラリの実装は相対的に容易である．しかしsyscall\_interceptはLinuxのglibcにしか対応していないため，Linux以外でのOS
+では動作しない可能性がある．
+
 \chapter{提案手法}
 本研究では，ユーザ空間ファイルシステムにおけるPOSIXインタフェース対応のために，前章で既存手法として挙げたプリロードライブラリの新しい
-設計を提案する．具体的には，ユーザ空間ファイルシステム上で動作するアプリケーションによって呼び出されるシステムコールをフックする
+設計を提案する．
+既存手法として挙げたライブラリはどちらもアプリケーションがglibcを利用してI/O操作を行うことを前提としており，アプリケーションの実装に
+よってはI/O関数をフックできずに正常な動作が行われない可能性がある．一方，標準ライブラリを使用しないアプリケーションであっても，I/O操作は
+最終的にはカーネルのリソースを利用することになるため，必ずシステムコールを発行する．そのためI/O操作に関連するシステムコールをファイルシステム
+のAPIに置き換えることができれば，全てのアプリケーションを動作させることができると考えられる．
+
+この考察を基にして，ユーザ空間ファイルシステム上で動作するアプリケーションによって呼び出されるシステムコールをフックする
 ライブラリを設計する．また提案手法の評価のため，ユーザ空間並列ファイルシステムであるCHFS~\cite{tatebe2022chfs}のPOSIX
 インタフェース対応を目的としたシステムコールフックライブラリを実装する．ライブラリの実装においては，システムコールフックメカニズムの
 zpoline~\cite{288689}を利用する．
@@ -238,7 +273,7 @@ zpoline~\cite{288689}を利用する．
 \begin{figure}[h]
 	\begin{minipage}[b]{1\columnwidth}
 		\centering
-		\includegraphics[width=0.9\linewidth]{./figure/syscall_hook_v2.pdf}
+		\includegraphics[width=0.9\linewidth]{./figure/syscall_hook_v3.pdf}
 		\caption{システムコールフックによるファイルシステムアクセス}
 		\label{fig:Syscall hook}
 	\end{minipage}
@@ -290,11 +325,57 @@ CHFSは建部らの開発するスーパコンピュータ向けの並列ファ�
 ものであり，実際のアプリケーションの複雑なソースコードを同様に書き換えることは現実的ではない．そのためアプリケーションをCHFS上で
 動作させるにはFUSEを利用したマウントが必要になるが，前章で述べた通り通信コストやコンテキストスイッチによる性能低下が予想される．
 
+\section{ライブラリ実装}
 本研究では提案した設計に基づき，CHFSのシステムコールフックライブラリを実装する．/chfs を仮想的なマウントディレクトリと設定し，/chfs
 から始まるパス名を対象とするシステムコールを，zpolineを利用してCHFSのAPI呼び出しに置き換える．次章の実験ではIO500で使用されるベンチ
 マークプログラムであるIOR~\cite{ior}を用いて性能評価を行う．IORベンチマークが呼び出すシステムコールに対応するため，実装する
 ライブラリではread，write，open，close，stat，lstat，lseek，pread64，pwrite64，openat，fsync，newfstatat システムコールを
 フックする．
+
+システムコールフックの例として，open，closeシステムコールのフック実装の疑似コードをそれぞれコード\ref{open}，コード\ref{write}に示す．
+
+zpolineにより，アプリケーションのopen，writeシステムコールの呼び出しはそれぞれhook\_open，hook\_write関数の呼び出しに置き換えられる．
+まずファイルオープン操作がCHFSによって処理されるべきかどうかを判定する．パスの引数をチェックし，ファイル名が/chfs/で始まる場合，
+CHFSによって処理されるべきであると判定し，CHFSのAPI呼び出しに置き換える．パスから/chfs/を削除し，フラグに応じてCHFSのファイル作成
+関数chfs\_create，ファイルオープン関数chfs\_openのどちらかを呼び出す．それらの関数の返り値はファイルディスクリプタであり，open
+システムコールの結果として返す前にファイルディスクリプタの31ビット目を1にセットしておく．
+
+ファイルへの書込み操作がCHfSによって処理されるべきかどうかを判定するには，ファイルオープンで得られたファイルディスクリプタの31ビット目
+を確認する．ファイルディスクリプタの31ビット目が1であれば，CHfSのファイルディスクリプタと判定し，システムコール呼び出しをCHFSの
+API呼び出しに置き換える．ファイル書き込み関数chfs\_writeにファイルディスクリプタを引数として渡す前に，31ビット目を0に戻す．
+
+\newpage
+
+\begin{lstlisting}[caption=openシステムコールフック,label=open]
+    hook_open(const char *path, int flags, …)
+    {
+        if path[:6] == "/chfs/" {
+            int ret;
+            path += 6;
+            if (flags & O_CREAT) {
+                ret = chfs_create(path, flags, …);
+            } else {
+                ret = chfs_open(path, flags);
+            }
+            if (ret < 0) return ret;
+        return ret | 1<<30;
+        } else {
+            return next_sys_call(path, flags, …);
+        }
+    }
+\end{lstlisting}
+
+\begin{lstlisting}[caption=writeシステムコールフック,label=write]
+    hook_write(int fd, void *buf, size_t count)
+    {
+        if (*fd & 1<<30) {
+            return (chfs_write(fd ^ 1<<30, buf, count));
+        } else {
+            return next_sys_call(fd, buf, count);
+        }
+    }
+\end{lstlisting}
+
 \chapter{評価実験}
 前章で実装したシステムコールフックライブラリの評価実験を行う．本実験の目的としては，ユーザ空間ファイルシステムが提供する
 クライアントライブラリを使用した場合と比べてどの程度ストレージアクセス性能が保たれるか評価すること，また既存手法の中で
